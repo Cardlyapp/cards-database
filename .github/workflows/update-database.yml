@@ -1,0 +1,134 @@
+name: Update Card Database
+
+on:
+  schedule:
+    - cron: "17 0,12 * * *"
+  workflow_dispatch:
+    inputs:
+      force_full_rebuild:
+        description: Rebuild sets and cards even if the TCGdex release is unchanged
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: update-card-database
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Check out database
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Choose full or price-only update
+        id: mode
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORCE_FULL_REBUILD: ${{ inputs.force_full_rebuild || false }}
+        run: |
+          CURRENT_RELEASE="$(python - <<'PY'
+          import json
+          from pathlib import Path
+
+          try:
+              print(json.loads(Path("manifest.json").read_text(encoding="utf-8")).get("tcgdexRelease", ""))
+          except (OSError, ValueError):
+              print("")
+          PY
+          )"
+
+          if LATEST_RELEASE="$(gh api repos/tcgdex/cards-database/releases/latest --jq .tag_name)"; then
+            if [ "$FORCE_FULL_REBUILD" != "true" ] && [ -n "$CURRENT_RELEASE" ] && [ "$LATEST_RELEASE" = "$CURRENT_RELEASE" ]; then
+              echo "TCGdex release $LATEST_RELEASE is already represented; refreshing prices only."
+              echo "full_rebuild=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "TCGdex release changed: ${CURRENT_RELEASE:-none} -> $LATEST_RELEASE"
+              echo "full_rebuild=true" >> "$GITHUB_OUTPUT"
+            fi
+            echo "latest_release=$LATEST_RELEASE" >> "$GITHUB_OUTPUT"
+          elif [ -f data/cards.json ] && [ -f data-japanese/cards.json ]; then
+            echo "Release lookup failed; preserving cards and refreshing prices only."
+            echo "full_rebuild=false" >> "$GITHUB_OUTPUT"
+            echo "latest_release=$CURRENT_RELEASE" >> "$GITHUB_OUTPUT"
+          else
+            echo "Release lookup failed and no complete database exists; performing the initial full build."
+            echo "full_rebuild=true" >> "$GITHUB_OUTPUT"
+            echo "latest_release=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build complete card database
+        if: steps.mode.outputs.full_rebuild == 'true'
+        shell: bash
+        env:
+          LATEST_RELEASE: ${{ steps.mode.outputs.latest_release }}
+        run: |
+          args=(python database-updater.py --output . --workers 30)
+          if [ -n "$LATEST_RELEASE" ]; then
+            args+=(--tcgdex-release "$LATEST_RELEASE")
+          fi
+          "${args[@]}"
+
+      - name: Refresh prices
+        if: steps.mode.outputs.full_rebuild != 'true'
+        run: python database-updater.py --output . --prices-only --workers 30
+
+      - name: Commit complete database
+        id: publish
+        shell: bash
+        run: |
+          git config user.name "cardly-database-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add manifest.json data/sets.json data/cards.json data/prices.json data-japanese/sets.json data-japanese/cards.json data-japanese/prices.json
+          if git diff --cached --quiet; then
+            echo "The card database has not changed."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            git commit -m "Update card database"
+            git push
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          print("version=" + json.load(open("manifest.json", encoding="utf-8"))["version"])
+          PY
+
+      - name: Prepare Pages artifact
+        shell: bash
+        run: |
+          mkdir -p _site/data _site/data-japanese
+          cp manifest.json _site/manifest.json
+          cp data/sets.json data/cards.json data/prices.json _site/data/
+          cp data-japanese/sets.json data-japanese/cards.json data-japanese/prices.json _site/data-japanese/
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
