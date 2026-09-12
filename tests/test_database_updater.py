@@ -73,15 +73,17 @@ class CatalogExportTests(unittest.TestCase):
                 checkpoint_interval=0,
             )
 
-            sets = json.loads((root / "data-japanese" / "sets.json").read_text(encoding="utf-8"))
+            sets = json.loads(
+                (root / "pokemon" / "data-japanese" / "sets.json").read_text(encoding="utf-8")
+            )
 
         self.assertEqual(region["setCount"], 1)
-        self.assertEqual(region["directory"], "data-japanese")
+        self.assertEqual(region["directory"], "pokemon/data-japanese")
         self.assertEqual([row["id"] for row in sets], ["Canonical"])
 
     def test_periodic_checkpoint_writes_snapshot_files(self):
         with tempfile.TemporaryDirectory() as temporary:
-            region_dir = Path(temporary) / "data"
+            region_dir = Path(temporary) / "pokemon" / "data-english"
             with patch.object(MODULE.time, "monotonic", side_effect=[100.0, 701.0]):
                 with MODULE.PeriodicCheckpointWriter(region_dir, 600) as checkpoints:
                     wrote = checkpoints.maybe_write(
@@ -110,15 +112,21 @@ class CatalogExportTests(unittest.TestCase):
             region = MODULE.export_region(FakeSource(), "international", root, request_delay=0)
             manifest = MODULE.publish_manifest(root, [region])
 
-            sets = json.loads((root / "data" / "sets.json").read_text(encoding="utf-8"))
-            cards = json.loads((root / "data" / "cards.json").read_text(encoding="utf-8"))
+            sets = json.loads(
+                (root / "pokemon" / "data-english" / "sets.json").read_text(encoding="utf-8")
+            )
+            cards = json.loads(
+                (root / "pokemon" / "data-english" / "cards.json").read_text(encoding="utf-8")
+            )
             self.assertEqual(sets[0]["card_count"], 1)
             self.assertEqual(cards[0]["set_id"], "set-1")
             self.assertNotIn("updated_at", sets[0])
             self.assertNotIn("updated_at", cards[0])
             self.assertNotIn("pricing", cards[0])
             self.assertEqual(manifest["regions"]["international"]["cardCount"], 1)
-            prices = json.loads((root / "data" / "prices.json").read_text(encoding="utf-8"))
+            prices = json.loads(
+                (root / "pokemon" / "data-english" / "prices.json").read_text(encoding="utf-8")
+            )
             self.assertEqual(prices[0]["card_id"], "card-1")
             self.assertNotIn("updated_at", prices[0])
             self.assertEqual(manifest["regions"]["international"]["priceCount"], 1)
@@ -132,8 +140,8 @@ class CatalogExportTests(unittest.TestCase):
     def test_price_only_export_preserves_cards_sets_and_release(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            region_dir = root / "data"
-            region_dir.mkdir()
+            region_dir = root / "pokemon" / "data-english"
+            region_dir.mkdir(parents=True)
             sets = [{"id": "set-1", "name": "First Set"}]
             cards = [{"id": "card-1", "set_id": "set-1", "local_id": "1"}]
             MODULE.write_json_atomic(region_dir / "sets.json", sets)
@@ -141,7 +149,7 @@ class CatalogExportTests(unittest.TestCase):
             MODULE.write_json_atomic(region_dir / "prices.json", [])
             initial_region = {
                 "version": "international",
-                "directory": "data",
+                "directory": "pokemon/data-english",
                 "setCount": 1,
                 "cardCount": 1,
                 "priceCount": 0,
@@ -220,8 +228,8 @@ class ParallelFetchTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            region_dir = root / "data"
-            region_dir.mkdir()
+            region_dir = root / "pokemon" / "data-english"
+            region_dir.mkdir(parents=True)
             MODULE.write_json_atomic(region_dir / "sets.json", [{"id": "set-1"}])
             MODULE.write_json_atomic(
                 region_dir / "cards.json",
@@ -266,8 +274,8 @@ class ParallelFetchTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            region_dir = root / "data"
-            region_dir.mkdir()
+            region_dir = root / "pokemon" / "data-english"
+            region_dir.mkdir(parents=True)
             previous_card = {
                 "id": "card-2",
                 "name": "Preserved card",

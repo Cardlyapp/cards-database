@@ -67,7 +67,7 @@ jobs:
               echo "full_rebuild=true" >> "$GITHUB_OUTPUT"
             fi
             echo "latest_release=$LATEST_RELEASE" >> "$GITHUB_OUTPUT"
-          elif [ -f data/cards.json ] && [ -f data-japanese/cards.json ]; then
+          elif [ -f pokemon/data-english/cards.json ] && [ -f pokemon/data-japanese/cards.json ]; then
             echo "Release lookup failed; preserving cards and refreshing prices only."
             echo "full_rebuild=false" >> "$GITHUB_OUTPUT"
             echo "latest_release=$CURRENT_RELEASE" >> "$GITHUB_OUTPUT"
@@ -99,7 +99,7 @@ jobs:
         run: |
           git config user.name "cardly-database-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add manifest.json data/sets.json data/cards.json data/prices.json data-japanese/sets.json data-japanese/cards.json data-japanese/prices.json
+          git add manifest.json pokemon/data-english/sets.json pokemon/data-english/cards.json pokemon/data-english/prices.json pokemon/data-japanese/sets.json pokemon/data-japanese/cards.json pokemon/data-japanese/prices.json
           if git diff --cached --quiet; then
             echo "The card database has not changed."
             echo "changed=false" >> "$GITHUB_OUTPUT"
@@ -116,10 +116,10 @@ jobs:
       - name: Prepare Pages artifact
         shell: bash
         run: |
-          mkdir -p _site/data _site/data-japanese
+          mkdir -p _site/pokemon/data-english _site/pokemon/data-japanese
           cp manifest.json _site/manifest.json
-          cp data/sets.json data/cards.json data/prices.json _site/data/
-          cp data-japanese/sets.json data-japanese/cards.json data-japanese/prices.json _site/data-japanese/
+          cp pokemon/data-english/sets.json pokemon/data-english/cards.json pokemon/data-english/prices.json _site/pokemon/data-english/
+          cp pokemon/data-japanese/sets.json pokemon/data-japanese/cards.json pokemon/data-japanese/prices.json _site/pokemon/data-japanese/
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5

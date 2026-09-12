@@ -9,12 +9,12 @@ file's SHA-256 hash before importing it.
 
 ```text
 manifest.json
-data/sets.json
-data/cards.json
-data/prices.json
-data-japanese/sets.json
-data-japanese/cards.json
-data-japanese/prices.json
+pokemon/data-english/sets.json
+pokemon/data-english/cards.json
+pokemon/data-english/prices.json
+pokemon/data-japanese/sets.json
+pokemon/data-japanese/cards.json
+pokemon/data-japanese/prices.json
 ```
 
 `manifest.json` is written only after a complete export. Its version and file

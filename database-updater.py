@@ -30,8 +30,8 @@ CARD_FETCH_RETRY_DELAY = 0.5
 CARD_FETCH_MAX_RETRY_DELAY = 15.0
 CARD_FETCH_BATCH_SIZE = 256
 REGIONS = {
-    "international": "data",
-    "japan": "data-japanese",
+    "international": "pokemon/data-english",
+    "japan": "pokemon/data-japanese",
 }
 SOURCE_ADAPTER_FUNCTIONS = (
     "fetch_all_sets",
