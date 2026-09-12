@@ -10,6 +10,11 @@ on:
         type: boolean
         required: true
         default: false
+      force_mtg_full_rebuild:
+        description: Rebuild MTG sets and cards regardless of their age
+        type: boolean
+        required: true
+        default: false
 
 permissions:
   contents: write
@@ -93,13 +98,72 @@ jobs:
         if: steps.mode.outputs.full_rebuild != 'true'
         run: python pokemon-updater.py --output . --prices-only --workers 30
 
+      - name: Choose MTG update mode
+        id: mtg_mode
+        shell: bash
+        env:
+          FORCE_MTG_FULL_REBUILD: ${{ inputs.force_mtg_full_rebuild || false }}
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          import os
+          from datetime import datetime, timedelta, timezone
+          from pathlib import Path
+
+          manifest_path = Path("mtg/manifest.json")
+          required_files = (
+              Path("mtg/data-english/sets.json"),
+              Path("mtg/data-english/cards/00.json"),
+              Path("mtg/data-english/prices/00.json"),
+              Path("mtg/data-japanese/sets.json"),
+              Path("mtg/data-japanese/cards/00.json"),
+              Path("mtg/data-japanese/prices/00.json"),
+          )
+          now = datetime.now(timezone.utc)
+
+          def timestamp(manifest, key):
+              value = manifest.get(key)
+              if not isinstance(value, str):
+                  return None
+              try:
+                  return datetime.fromisoformat(value.replace("Z", "+00:00"))
+              except ValueError:
+                  return None
+
+          try:
+              manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+          except (OSError, ValueError):
+              manifest = {}
+
+          force = os.environ.get("FORCE_MTG_FULL_REBUILD") == "true"
+          data_updated = timestamp(manifest, "dataUpdatedAt")
+          prices_updated = timestamp(manifest, "pricesUpdatedAt")
+          if force or not all(path.is_file() for path in required_files) or data_updated is None:
+              mode = "full"
+          elif now - data_updated >= timedelta(days=5):
+              mode = "full"
+          elif prices_updated is None or now - prices_updated >= timedelta(days=1):
+              mode = "prices"
+          else:
+              mode = "skip"
+          print(f"mode={mode}")
+          PY
+
+      - name: Build complete MTG database
+        if: steps.mtg_mode.outputs.mode == 'full'
+        run: python mtg-updater.py --output . --workers 12
+
+      - name: Refresh MTG prices
+        if: steps.mtg_mode.outputs.mode == 'prices'
+        run: python mtg-updater.py --output . --prices-only --workers 12
+
       - name: Commit complete database
         id: publish
         shell: bash
         run: |
           git config user.name "cardly-database-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add pokemon/manifest.json pokemon/data-english/sets.json pokemon/data-english/cards.json pokemon/data-english/prices.json pokemon/data-japanese/sets.json pokemon/data-japanese/cards.json pokemon/data-japanese/prices.json
+          git add pokemon/manifest.json pokemon/data-english/sets.json pokemon/data-english/cards.json pokemon/data-english/prices.json pokemon/data-japanese/sets.json pokemon/data-japanese/cards.json pokemon/data-japanese/prices.json mtg/manifest.json mtg/data-english mtg/data-japanese
           if git diff --cached --quiet; then
             echo "The card database has not changed."
             echo "changed=false" >> "$GITHUB_OUTPUT"
@@ -120,6 +184,14 @@ jobs:
           cp pokemon/manifest.json _site/pokemon/manifest.json
           cp pokemon/data-english/sets.json pokemon/data-english/cards.json pokemon/data-english/prices.json _site/pokemon/data-english/
           cp pokemon/data-japanese/sets.json pokemon/data-japanese/cards.json pokemon/data-japanese/prices.json _site/pokemon/data-japanese/
+          if [ -f mtg/manifest.json ]; then
+            mkdir -p _site/mtg/data-english _site/mtg/data-japanese
+            cp mtg/manifest.json _site/mtg/manifest.json
+            cp mtg/data-english/sets.json _site/mtg/data-english/sets.json
+            cp -R mtg/data-english/cards mtg/data-english/prices _site/mtg/data-english/
+            cp mtg/data-japanese/sets.json _site/mtg/data-japanese/sets.json
+            cp -R mtg/data-japanese/cards mtg/data-japanese/prices _site/mtg/data-japanese/
+          fi
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
 
