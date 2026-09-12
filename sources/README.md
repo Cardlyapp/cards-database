@@ -1,6 +1,6 @@
 # Source adapters
 
-`database-updater.py` is provider-independent. A source adapter is a Python
+`pokemon-updater.py` is provider-independent. A source adapter is a Python
 module exposing these callables:
 
 ```python
@@ -20,7 +20,7 @@ provider responses to the stable catalog row schema.
 To test another source without changing the updater:
 
 ```bash
-python database-updater.py --output ./output --source-module sources/other.py
+python pokemon-updater.py --output ./output --source-module sources/other.py
 ```
 
 Adapters must raise request exceptions for transient network failures so the

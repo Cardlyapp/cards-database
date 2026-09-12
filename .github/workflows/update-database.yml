@@ -52,7 +52,7 @@ jobs:
           from pathlib import Path
 
           try:
-              print(json.loads(Path("manifest.json").read_text(encoding="utf-8")).get("tcgdexRelease", ""))
+              print(json.loads(Path("pokemon/manifest.json").read_text(encoding="utf-8")).get("tcgdexRelease", ""))
           except (OSError, ValueError):
               print("")
           PY
@@ -83,7 +83,7 @@ jobs:
         env:
           LATEST_RELEASE: ${{ steps.mode.outputs.latest_release }}
         run: |
-          args=(python database-updater.py --output . --workers 30)
+          args=(python pokemon-updater.py --output . --workers 30)
           if [ -n "$LATEST_RELEASE" ]; then
             args+=(--tcgdex-release "$LATEST_RELEASE")
           fi
@@ -91,7 +91,7 @@ jobs:
 
       - name: Refresh prices
         if: steps.mode.outputs.full_rebuild != 'true'
-        run: python database-updater.py --output . --prices-only --workers 30
+        run: python pokemon-updater.py --output . --prices-only --workers 30
 
       - name: Commit complete database
         id: publish
@@ -99,7 +99,7 @@ jobs:
         run: |
           git config user.name "cardly-database-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add manifest.json pokemon/data-english/sets.json pokemon/data-english/cards.json pokemon/data-english/prices.json pokemon/data-japanese/sets.json pokemon/data-japanese/cards.json pokemon/data-japanese/prices.json
+          git add pokemon/manifest.json pokemon/data-english/sets.json pokemon/data-english/cards.json pokemon/data-english/prices.json pokemon/data-japanese/sets.json pokemon/data-japanese/cards.json pokemon/data-japanese/prices.json
           if git diff --cached --quiet; then
             echo "The card database has not changed."
             echo "changed=false" >> "$GITHUB_OUTPUT"
@@ -110,17 +110,16 @@ jobs:
           fi
           python - <<'PY' >> "$GITHUB_OUTPUT"
           import json
-          print("version=" + json.load(open("manifest.json", encoding="utf-8"))["version"])
+          print("version=" + json.load(open("pokemon/manifest.json", encoding="utf-8"))["version"])
           PY
 
       - name: Prepare Pages artifact
         shell: bash
         run: |
           mkdir -p _site/pokemon/data-english _site/pokemon/data-japanese
-          cp manifest.json _site/manifest.json
+          cp pokemon/manifest.json _site/pokemon/manifest.json
           cp pokemon/data-english/sets.json pokemon/data-english/cards.json pokemon/data-english/prices.json _site/pokemon/data-english/
           cp pokemon/data-japanese/sets.json pokemon/data-japanese/cards.json pokemon/data-japanese/prices.json _site/pokemon/data-japanese/
-
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
 

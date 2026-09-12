@@ -29,6 +29,7 @@ CARD_FETCH_ATTEMPTS = 6
 CARD_FETCH_RETRY_DELAY = 0.5
 CARD_FETCH_MAX_RETRY_DELAY = 15.0
 CARD_FETCH_BATCH_SIZE = 256
+MANIFEST_PATH = Path("pokemon/manifest.json")
 REGIONS = {
     "international": "pokemon/data-english",
     "japan": "pokemon/data-japanese",
@@ -614,7 +615,7 @@ def content_version(regions: Iterable[dict[str, Any]]) -> str:
 
 
 def existing_manifest(output_root: Path) -> dict[str, Any]:
-    manifest_path = output_root / "manifest.json"
+    manifest_path = output_root / MANIFEST_PATH
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -656,7 +657,7 @@ def publish_manifest(
         manifest["tcgdexRelease"] = tcgdex_release
     if requested_release and failed_card_count:
         manifest["pendingTcgdexRelease"] = requested_release
-    write_json_atomic(output_root / "manifest.json", manifest)
+    write_json_atomic(output_root / MANIFEST_PATH, manifest)
     return manifest
 
 

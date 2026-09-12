@@ -9,8 +9,8 @@ from unittest.mock import patch
 import requests
 
 
-MODULE_PATH = Path(__file__).parents[1] / "database-updater.py"
-SPEC = importlib.util.spec_from_file_location("database_updater", MODULE_PATH)
+MODULE_PATH = Path(__file__).parents[1] / "pokemon-updater.py"
+SPEC = importlib.util.spec_from_file_location("pokemon_updater", MODULE_PATH)
 MODULE = importlib.util.module_from_spec(SPEC)
 assert SPEC and SPEC.loader
 SPEC.loader.exec_module(MODULE)
@@ -111,6 +111,9 @@ class CatalogExportTests(unittest.TestCase):
             root = Path(temporary)
             region = MODULE.export_region(FakeSource(), "international", root, request_delay=0)
             manifest = MODULE.publish_manifest(root, [region])
+
+            self.assertTrue((root / "pokemon" / "manifest.json").is_file())
+            self.assertFalse((root / "manifest.json").exists())
 
             sets = json.loads(
                 (root / "pokemon" / "data-english" / "sets.json").read_text(encoding="utf-8")

@@ -2,13 +2,13 @@
 
 The catalog is generated from pluggable source adapters and published as bulk
 JSON files. TCGdex is the initial source for both international and Japanese
-cards. Consumers should read `manifest.json` first and verify each listed
-file's SHA-256 hash before importing it.
+cards. Consumers should read `pokemon/manifest.json` first and verify each
+listed file's SHA-256 hash before importing it.
 
 ## Files
 
 ```text
-manifest.json
+pokemon/manifest.json
 pokemon/data-english/sets.json
 pokemon/data-english/cards.json
 pokemon/data-english/prices.json
@@ -17,7 +17,7 @@ pokemon/data-japanese/cards.json
 pokemon/data-japanese/prices.json
 ```
 
-`manifest.json` is written only after a complete export. Its version and file
+`pokemon/manifest.json` is written only after a complete export. Its version and file
 hashes are the publication boundary: consumers must not use in-progress files
 without a matching manifest.
 
@@ -25,7 +25,7 @@ without a matching manifest.
 
 ```bash
 python -m pip install -r requirements.txt
-python database-updater.py --output .
+python pokemon-updater.py --output .
 ```
 
 Card requests run concurrently and completed work is checkpointed in the
@@ -41,7 +41,6 @@ catalog schema from another provider.
 
 ## Automation
 
-The `Update Card Database` workflow runs twice daily and can also be
-started manually. It rebuilds sets and cards when the upstream TCGdex release
-changes; otherwise it refreshes prices from the existing card files.
-
+The `Update Card Database` workflow runs twice daily and can also be started
+manually. It rebuilds sets and cards when the upstream TCGdex release changes;
+otherwise it refreshes prices from the existing card files.
