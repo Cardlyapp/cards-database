@@ -47,6 +47,10 @@ USD and Cardmarket prices in EUR; Japanese price data currently includes
 Cardmarket prices in EUR. Run a
 price-only refresh without rebuilding sets and cards:
 
+Price rows reference `card_id` and, where TCGdex permits a clear match,
+`variant_id`. Cards with only card-level marketplace pricing retain their
+prices; `variant_id` is `null` when the source does not identify one variant.
+
 ```bash
 python pokemon-updater.py --output . --prices-only
 ```

@@ -305,7 +305,7 @@ def transform_price_data(card_id: str, card_data: dict[str, Any]) -> list[dict[s
     rows: list[dict[str, Any]] = []
     variants = card_data.get("variants_detailed")
     if not isinstance(variants, list):
-        return rows
+        variants = []
     for variant in variants:
         if not isinstance(variant, dict) or not variant.get("variantId"):
             continue
@@ -357,4 +357,52 @@ def transform_price_data(card_id: str, card_data: dict[str, Any]) -> list[dict[s
             "market": prices.get("marketPrice"),
             "last_updated": tcgplayer.get("updated"),
         })
+
+    card_pricing = card_data.get("pricing")
+    if not isinstance(card_pricing, dict):
+        return rows
+    valid_variants = [
+        variant for variant in variants
+        if isinstance(variant, dict) and variant.get("variantId")
+    ]
+    if not any(row["market_source"] == "cardmarket" for row in rows):
+        cardmarket = card_pricing.get("cardmarket")
+        if isinstance(cardmarket, dict):
+            rows.append({
+                "card_id": card_id,
+                "variant_id": valid_variants[0]["variantId"] if len(valid_variants) == 1 else None,
+                "market_source": "cardmarket",
+                "product_id": cardmarket.get("idProduct"),
+                "currency": cardmarket.get("unit", "EUR"),
+                "low": cardmarket.get("low"),
+                "average": cardmarket.get("avg"),
+                "trend": cardmarket.get("trend"),
+                "holo_low": cardmarket.get("low-holo"),
+                "holo_average": cardmarket.get("avg-holo"),
+                "holo_trend": cardmarket.get("trend-holo"),
+                "last_updated": cardmarket.get("updated"),
+            })
+    if not any(row["market_source"] == "tcgplayer" for row in rows):
+        tcgplayer = card_pricing.get("tcgplayer")
+        if isinstance(tcgplayer, dict):
+            for price_key, prices in tcgplayer.items():
+                if not isinstance(prices, dict):
+                    continue
+                matching_variants = [
+                    variant["variantId"] for variant in valid_variants
+                    if _tcgplayer_price_key(variant, tcgplayer) == price_key
+                ]
+                rows.append({
+                    "card_id": card_id,
+                    "variant_id": matching_variants[0] if len(matching_variants) == 1 else None,
+                    "market_source": "tcgplayer",
+                    "product_id": prices.get("productId"),
+                    "currency": tcgplayer.get("unit", "USD"),
+                    "price_type": price_key,
+                    "low": prices.get("lowPrice"),
+                    "mid": prices.get("midPrice"),
+                    "high": prices.get("highPrice"),
+                    "market": prices.get("marketPrice"),
+                    "last_updated": tcgplayer.get("updated"),
+                })
     return rows

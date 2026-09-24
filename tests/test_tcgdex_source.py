@@ -143,6 +143,53 @@ class TCGdexSourceTests(unittest.TestCase):
         }]}
         self.assertEqual(MODULE.transform_price_data("card-1", card), [])
 
+    def test_card_level_prices_survive_missing_variant_marketplace_data(self):
+        card = {
+            "variants_detailed": [
+                {"variantId": "holo-id", "type": "holo", "size": "standard"},
+                {"variantId": "reverse-id", "type": "reverse", "size": "standard"},
+            ],
+            "pricing": {
+                "cardmarket": {"idProduct": 277767, "unit": "EUR", "avg": 116.78, "avg-holo": 8.67},
+                "tcgplayer": {
+                    "unit": "USD",
+                    "holofoil": {"productId": 86908, "marketPrice": 220.01},
+                    "reverse-holofoil": {"productId": 86908, "marketPrice": 176.24},
+                },
+            },
+        }
+        rows = MODULE.transform_price_data("dp3-14", card)
+        self.assertEqual(len(rows), 3)
+        self.assertEqual(rows[0]["variant_id"], None)
+        self.assertEqual(rows[0]["average"], 116.78)
+        self.assertEqual(rows[0]["holo_average"], 8.67)
+        self.assertEqual(
+            {(row["variant_id"], row["market"]) for row in rows[1:]},
+            {("holo-id", 220.01), ("reverse-id", 176.24)},
+        )
+
+    def test_card_level_price_remains_unlinked_when_variants_are_ambiguous(self):
+        card = {
+            "variants_detailed": [
+                {"variantId": "regular", "type": "holo"},
+                {"variantId": "stamped", "type": "holo", "stamp": ["staff"]},
+            ],
+            "pricing": {"tcgplayer": {"holofoil": {"productId": 1, "marketPrice": 5.0}}},
+        }
+        rows = MODULE.transform_price_data("card-1", card)
+        self.assertEqual(len(rows), 1)
+        self.assertIsNone(rows[0]["variant_id"])
+
+    def test_card_level_price_survives_without_detailed_variants(self):
+        rows = MODULE.transform_price_data(
+            "card-1",
+            {"pricing": {"cardmarket": {"idProduct": 7, "avg": 2.5}}},
+        )
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["card_id"], "card-1")
+        self.assertIsNone(rows[0]["variant_id"])
+        self.assertEqual(rows[0]["average"], 2.5)
+
     def test_set_index_503_falls_back_to_card_index(self):
         unavailable = Mock()
         unavailable.raise_for_status.side_effect = requests.HTTPError("unavailable")
