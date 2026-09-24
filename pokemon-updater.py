@@ -21,7 +21,7 @@ from typing import Any, Callable, Iterable, Iterator, TypeVar
 import requests
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 DEFAULT_FETCH_WORKERS = 8
 DEFAULT_REQUEST_DELAY = 0.1
 DEFAULT_CHECKPOINT_INTERVAL = 600.0
@@ -361,8 +361,6 @@ def export_region(
                             continue
                         card_row = dict(existing_card)
                         card_row["set_id"] = set_id
-                        card_row["set_name"] = card_row.get("set_name") or set_row.get("name")
-                        card_row["version"] = version
                         card_id = stable_id(card_row.get("id") or card_source_id, "card")
                         print(
                             f"Preserving prior catalog data for failed {version} card {card_id}",
@@ -399,25 +397,24 @@ def export_region(
 
                     card_row["id"] = card_id
                     card_row["set_id"] = set_id
-                    card_row["set_name"] = card_row.get("set_name") or set_row.get("name")
-                    card_row["version"] = version
+                    card_row.pop("set_name", None)
+                    card_row.pop("version", None)
+                    card_row["language"] = "english" if version == "international" else "japanese"
                     cards.append(card_row)
                     if fetch_error is None and isinstance(details_card, dict):
-                        pricing = details_card.get("pricing")
-                        if isinstance(pricing, dict):
-                            try:
-                                new_prices = [
-                                    clean_export_row(row)
-                                    for row in source.transform_price_data(card_id, pricing)
-                                ]
-                                prices.extend(new_prices)
-                            except Exception as exc:
-                                failed_card_ids.append(card_source_id)
-                                prices.extend(dict(row) for row in existing_card_prices.get(card_id, []))
-                                print(
-                                    f"Preserving prior prices for invalid {version} card {card_id}: {exc}",
-                                    file=sys.stderr,
-                                )
+                        try:
+                            new_prices = [
+                                clean_export_row(row)
+                                for row in source.transform_price_data(card_id, details_card)
+                            ]
+                            prices.extend(new_prices)
+                        except Exception as exc:
+                            failed_card_ids.append(card_source_id)
+                            prices.extend(dict(row) for row in existing_card_prices.get(card_id, []))
+                            print(
+                                f"Preserving prior prices for invalid {version} card {card_id}: {exc}",
+                                file=sys.stderr,
+                            )
                     set_card_count += 1
 
                     if card_index % 100 == 0:
@@ -445,6 +442,7 @@ def export_region(
     prices.sort(
         key=lambda row: (
             stable_id(row.get("card_id"), "price card"),
+            str(row.get("variant_id") or ""),
             str(row.get("market_source") or ""),
             str(row.get("condition") or ""),
             str(row.get("price_type") or ""),
@@ -535,21 +533,19 @@ def export_region_prices(
                         file=sys.stderr,
                     )
                 else:
-                    pricing = details.get("pricing")
-                    if isinstance(pricing, dict):
-                        try:
-                            new_prices = [
-                                clean_export_row(row)
-                                for row in source.transform_price_data(card_id, pricing)
-                            ]
-                            prices.extend(new_prices)
-                        except Exception as exc:
-                            failed_card_ids.append(card_id)
-                            prices.extend(dict(row) for row in existing_card_prices.get(card_id, []))
-                            print(
-                                f"Preserving prior prices for invalid {version} card {card_id}: {exc}",
-                                file=sys.stderr,
-                            )
+                    try:
+                        new_prices = [
+                            clean_export_row(row)
+                            for row in source.transform_price_data(card_id, details)
+                        ]
+                        prices.extend(new_prices)
+                    except Exception as exc:
+                        failed_card_ids.append(card_id)
+                        prices.extend(dict(row) for row in existing_card_prices.get(card_id, []))
+                        print(
+                            f"Preserving prior prices for invalid {version} card {card_id}: {exc}",
+                            file=sys.stderr,
+                        )
 
                 if card_index % 100 == 0:
                     print(f"  Refreshed {card_index}/{len(cards)} card prices")
@@ -562,6 +558,7 @@ def export_region_prices(
     prices.sort(
         key=lambda row: (
             stable_id(row.get("card_id"), "price card"),
+            str(row.get("variant_id") or ""),
             str(row.get("market_source") or ""),
             str(row.get("condition") or ""),
             str(row.get("price_type") or ""),

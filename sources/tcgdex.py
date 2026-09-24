@@ -152,6 +152,32 @@ def _png_url(url: str | None) -> str | None:
     return base + (separator + query if separator else "")
 
 
+def _variant_label(value: str) -> str:
+    special = {"mcdonalds": "McDonald's", "1st-edition": "1st Edition"}
+    return special.get(value, value.replace("-", " ").replace("_", " ").title())
+
+
+def _variant_name(variant: dict[str, Any]) -> str:
+    variant_type = str(variant["type"])
+    type_name = {
+        "reverse": "Reverse Holo",
+        "holo": "Holofoil",
+        "holofoil": "Holofoil",
+        "normal": "Normal",
+    }.get(variant_type, _variant_label(variant_type))
+    parts = []
+    if variant.get("size") == "jumbo":
+        parts.append("Jumbo")
+    if variant.get("foil"):
+        parts.append(_variant_label(str(variant["foil"])))
+    parts.append(type_name)
+    if variant.get("subtype"):
+        parts.append(_variant_label(str(variant["subtype"])))
+    stamps = variant.get("stamps") or []
+    parts.extend(_variant_label(str(stamp)) for stamp in stamps)
+    return " ".join(parts)
+
+
 def transform_set_data(
     set_data: dict[str, Any],
     version: str = "international",
@@ -181,7 +207,6 @@ def transform_card_data(
 ) -> dict[str, Any]:
     set_info = card_data.get("set") if isinstance(card_data.get("set"), dict) else {}
     legalities = card_data.get("legal") if isinstance(card_data.get("legal"), dict) else {}
-    tcgplayer = card_data.get("tcgplayer")
     base_image_url = card_data.get("image")
     image_small_url = f"{base_image_url}/low.webp" if base_image_url else None
     image_large_url = f"{base_image_url}/high.webp" if base_image_url else None
@@ -190,110 +215,146 @@ def transform_card_data(
         image_small_url = f"https://images.pokemontcg.io/{set_info['id']}/{card_number}.png"
         image_large_url = f"https://images.pokemontcg.io/{set_info['id']}/{card_number}_hires.png"
 
-    variants_detailed = None
+    variants = []
     if isinstance(card_data.get("variants_detailed"), list):
-        variants_detailed = {}
         for item in card_data["variants_detailed"]:
             if not isinstance(item, dict) or not item.get("type") or not item.get("size"):
                 continue
-            variant_type = item["type"]
-            variant_size = item["size"]
-            existing = variants_detailed.get(variant_type)
-            if existing is None:
-                variants_detailed[variant_type] = variant_size
-            elif existing != variant_size:
-                if not isinstance(existing, list):
-                    existing = variants_detailed[variant_type] = [existing]
-                if variant_size not in existing:
-                    existing.append(variant_size)
-        variants_detailed = variants_detailed or None
+            third_party = item.get("thirdParty")
+            marketplace_ids = (
+                {
+                    market: third_party[market]
+                    for market in ("cardmarket", "tcgplayer", "cardtrader")
+                    if third_party.get(market) is not None
+                }
+                if isinstance(third_party, dict)
+                else {}
+            )
+            stamps = item.get("stamp") or []
+            if not isinstance(stamps, list):
+                stamps = [stamps]
+            variant = {
+                "id": item.get("variantId"),
+                "type": item["type"],
+                "size": item["size"],
+                "subtype": item.get("subtype"),
+                "foil": item.get("foil"),
+                "stamps": stamps,
+                "identifiers": marketplace_ids,
+            }
+            variant["name"] = _variant_name(variant)
+            variants.append(variant)
+
+    hp = card_data.get("hp")
+    if hp is not None:
+        try:
+            hp = int(hp)
+        except (TypeError, ValueError):
+            hp = None
 
     return {
         "id": card_data.get("id"),
         "name": card_data.get("name"),
         "supertype": card_data.get("category"),
-        "subtypes": card_data.get("dexId"),
-        "hp": str(card_data.get("hp")) if card_data.get("hp") else None,
+        "pokemon_ids": card_data.get("dexId") or [],
+        "hp": hp,
         "types": card_data.get("types"),
         "rarity": card_data.get("rarity"),
         "set_id": set_info.get("id"),
-        "set_name": set_info.get("name"),
-        "set_series": set_info.get("serie"),
-        "set_symbol_url": _png_url(set_info.get("symbol")),
-        "set_logo_url": _png_url(set_info.get("logo")),
-        "number": card_data.get("localId"),
+        "number": card_number,
         "artist": card_data.get("illustrator"),
-        "image_small_url": image_small_url,
-        "image_large_url": image_large_url,
-        "legality_standard": legalities.get("standard"),
-        "legality_expanded": legalities.get("expanded"),
-        "legality_unlimited": legalities.get("unlimited"),
+        "images": {"small": image_small_url, "large": image_large_url},
+        "legalities": {
+            "standard": legalities.get("standard"),
+            "expanded": legalities.get("expanded"),
+            "unlimited": legalities.get("unlimited"),
+        },
         "regulation_mark": card_data.get("regulationMark"),
         "stage": card_data.get("stage"),
         "suffix": card_data.get("suffix"),
         "description": card_data.get("effect") or card_data.get("description"),
-        "tcgplayer_url": tcgplayer.get("url") if isinstance(tcgplayer, dict) else None,
-        "variants": card_data.get("variants"),
-        "variants_detailed": variants_detailed,
-        "version": version,
+        "identifiers": {"tcgdex": card_data.get("id")},
+        "variants": variants,
+        "language": "english" if version == "international" else "japanese",
     }
 
 
-def transform_price_data(card_id: str, pricing_data: dict[str, Any]) -> list[dict[str, Any]]:
+def _tcgplayer_price_key(variant: dict[str, Any], pricing: dict[str, Any]) -> str | None:
+    variant_type = variant.get("type")
+    base = {
+        "normal": "normal",
+        "holo": "holofoil",
+        "holofoil": "holofoil",
+        "reverse": "reverse-holofoil",
+    }.get(variant_type)
+    if base is None:
+        return None
+    stamps = variant.get("stamp") or []
+    if not isinstance(stamps, list):
+        stamps = [stamps]
+    if "1st-edition" in stamps:
+        candidates = ("1st-edition-holofoil", "1stEdition") if base == "holofoil" else ("1st-edition", "1stEdition")
+    elif variant.get("subtype") == "unlimited":
+        candidates = (("unlimited-holofoil", base) if base == "holofoil" else ("unlimited", base))
+    else:
+        candidates = (base, "reverse" if base == "reverse-holofoil" else base)
+    return next((key for key in candidates if isinstance(pricing.get(key), dict)), None)
+
+
+def transform_price_data(card_id: str, card_data: dict[str, Any]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    cardmarket = pricing_data.get("cardmarket")
-    if isinstance(cardmarket, dict):
-        rows.append(
-            {
+    variants = card_data.get("variants_detailed")
+    if not isinstance(variants, list):
+        return rows
+    for variant in variants:
+        if not isinstance(variant, dict) or not variant.get("variantId"):
+            continue
+        pricing = variant.get("pricing")
+        third_party = variant.get("thirdParty")
+        if not isinstance(pricing, dict) or not isinstance(third_party, dict):
+            continue
+        variant_id = variant["variantId"]
+        cardmarket = pricing.get("cardmarket")
+        cardmarket_id = third_party.get("cardmarket")
+        if (
+            cardmarket_id is not None
+            and isinstance(cardmarket, dict)
+            and cardmarket.get("idProduct") == cardmarket_id
+        ):
+            rows.append({
                 "card_id": card_id,
+                "variant_id": variant_id,
                 "market_source": "cardmarket",
-                "condition": "average",
+                "product_id": cardmarket_id,
                 "currency": cardmarket.get("unit", "EUR"),
                 "low": cardmarket.get("low"),
                 "average": cardmarket.get("avg"),
-                "trend": str(cardmarket.get("trend")),
-                "price_type": "normal",
+                "trend": cardmarket.get("trend"),
+                "holo_low": cardmarket.get("low-holo"),
+                "holo_average": cardmarket.get("avg-holo"),
+                "holo_trend": cardmarket.get("trend-holo"),
                 "last_updated": cardmarket.get("updated"),
-            }
-        )
-        if "avg-holo" in cardmarket or "low-holo" in cardmarket:
-            rows.append(
-                {
-                    "card_id": card_id,
-                    "market_source": "cardmarket",
-                    "condition": "average",
-                    "currency": cardmarket.get("unit", "EUR"),
-                    "low": cardmarket.get("low-holo"),
-                    "average": cardmarket.get("avg-holo"),
-                    "trend": str(cardmarket.get("trend-holo")),
-                    "price_type": "holo",
-                    "last_updated": cardmarket.get("updated"),
-                }
-            )
+            })
 
-    tcgplayer = pricing_data.get("tcgplayer")
-    if isinstance(tcgplayer, dict):
-        for provider_key, price_type in (
-            ("normal", "normal"),
-            ("reverse", "reverse"),
-            ("holofoil", "holofoil"),
-            ("1stEdition", "1stEdition"),
-        ):
-            prices = tcgplayer.get(provider_key)
-            if not isinstance(prices, dict):
-                continue
-            rows.append(
-                {
-                    "card_id": card_id,
-                    "market_source": "tcgplayer",
-                    "condition": "normal",
-                    "currency": tcgplayer.get("unit", "USD"),
-                    "low": prices.get("lowPrice"),
-                    "mid": prices.get("midPrice"),
-                    "high": prices.get("highPrice"),
-                    "market": prices.get("marketPrice"),
-                    "price_type": price_type,
-                    "last_updated": tcgplayer.get("updated"),
-                }
-            )
+        tcgplayer = pricing.get("tcgplayer")
+        tcgplayer_id = third_party.get("tcgplayer")
+        if tcgplayer_id is None or not isinstance(tcgplayer, dict):
+            continue
+        price_key = _tcgplayer_price_key(variant, tcgplayer)
+        prices = tcgplayer.get(price_key) if price_key else None
+        if not isinstance(prices, dict) or prices.get("productId") != tcgplayer_id:
+            continue
+        rows.append({
+            "card_id": card_id,
+            "variant_id": variant_id,
+            "market_source": "tcgplayer",
+            "product_id": tcgplayer_id,
+            "currency": tcgplayer.get("unit", "USD"),
+            "price_type": price_key,
+            "low": prices.get("lowPrice"),
+            "mid": prices.get("midPrice"),
+            "high": prices.get("highPrice"),
+            "market": prices.get("marketPrice"),
+            "last_updated": tcgplayer.get("updated"),
+        })
     return rows

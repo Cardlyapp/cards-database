@@ -63,8 +63,19 @@ jobs:
           PY
           )"
 
+          CURRENT_SCHEMA="$(python - <<'PY'
+          import json
+          from pathlib import Path
+
+          try:
+              print(json.loads(Path("pokemon/manifest.json").read_text(encoding="utf-8")).get("schemaVersion", 0))
+          except (OSError, ValueError):
+              print(0)
+          PY
+          )"
+
           if LATEST_RELEASE="$(gh api repos/tcgdex/cards-database/releases/latest --jq .tag_name)"; then
-            if [ "$FORCE_FULL_REBUILD" != "true" ] && [ -n "$CURRENT_RELEASE" ] && [ "$LATEST_RELEASE" = "$CURRENT_RELEASE" ]; then
+            if [ "$FORCE_FULL_REBUILD" != "true" ] && [ "$CURRENT_SCHEMA" = "3" ] && [ -n "$CURRENT_RELEASE" ] && [ "$LATEST_RELEASE" = "$CURRENT_RELEASE" ]; then
               echo "TCGdex release $LATEST_RELEASE is already represented; refreshing prices only."
               echo "full_rebuild=false" >> "$GITHUB_OUTPUT"
             else
@@ -72,7 +83,7 @@ jobs:
               echo "full_rebuild=true" >> "$GITHUB_OUTPUT"
             fi
             echo "latest_release=$LATEST_RELEASE" >> "$GITHUB_OUTPUT"
-          elif [ -f pokemon/data-english/cards.json ] && [ -f pokemon/data-japanese/cards.json ]; then
+          elif [ "$CURRENT_SCHEMA" = "3" ] && [ -f pokemon/data-english/cards.json ] && [ -f pokemon/data-japanese/cards.json ]; then
             echo "Release lookup failed; preserving cards and refreshing prices only."
             echo "full_rebuild=false" >> "$GITHUB_OUTPUT"
             echo "latest_release=$CURRENT_RELEASE" >> "$GITHUB_OUTPUT"

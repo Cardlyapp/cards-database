@@ -10,7 +10,7 @@ fetch_card_details(card_id: str, version: str, set_id=None, local_id=None) -> di
 detect_data_source(row: dict) -> str
 transform_set_data(row: dict, version: str, source: str) -> dict
 transform_card_data(row: dict, version: str, source: str) -> dict
-transform_price_data(card_id: str, pricing: dict) -> list[dict]
+transform_price_data(card_id: str, card_data: dict) -> list[dict]
 ```
 
 The updater owns concurrency, retries, failure isolation, checkpoints,
